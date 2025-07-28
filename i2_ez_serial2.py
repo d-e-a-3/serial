@@ -1,20 +1,12 @@
-# -*- coding: utf-8 -*-
-"""
-Version 3: Adds controls for serial update frequency and sampling duration,
-and sets the plot x-axis to the full sampling duration.
-@author: clandersen
-"""
-
 import sys
 import time
-from PyQt5.QtWidgets import (
-    QApplication, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QTextEdit,
-    QHBoxLayout, QSpinBox
-)
+import csv
 from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import (
+    QApplication, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QTextEdit, QSpinBox
+)
 from pyqtgraph import PlotWidget, mkPen
 from Serial import Serial
-
 
 class MainApp(QWidget):
     def __init__(self):
@@ -128,6 +120,11 @@ class MainApp(QWidget):
         self.plot_widget.showGrid(x=True, y=True)
         self.data_line = self.plot_widget.plot([], [], pen=mkPen(color="r", width=2), name="Force")
         layout.addWidget(self.plot_widget)
+
+        # Export Data Button
+        self.export_button = QPushButton("Export Data")
+        self.export_button.clicked.connect(self.export_data)
+        layout.addWidget(self.export_button)
 
         # Send test data
         self.send_button = QPushButton("Send Test Data")
@@ -259,6 +256,18 @@ class MainApp(QWidget):
         except Exception as e:
             self.log_display.append(f"Error handling received data: {e}")
 
+    def export_data(self):
+        try:
+            filename = "exported_data.csv"
+            with open(filename, "w", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Time", "Force (mN)"])
+                for x, y in zip(self.data_x, self.data_y):
+                    writer.writerow([x, y])
+            self.log_display.append(f"Data exported to {filename}")
+        except Exception as e:
+            self.log_display.append(f"Export failed: {e}")
+
     def send_test_data(self):
         try:
             test_message = "42.0"
@@ -266,7 +275,6 @@ class MainApp(QWidget):
             self.log_display.append(f"Sent: {test_message}")
         except Exception as e:
             self.log_display.append(f"Error sending data: {e}")
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
