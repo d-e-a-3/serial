@@ -1,0 +1,288 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Dec 23 22:38:39 2024
+
+@author: clandersen
+"""
+
+import sys
+import time
+import csv
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QApplication, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QTextEdit, QSlider, QMessageBox
+)
+from pyqtgraph import PlotWidget, mkPen
+from Serial import Serial
+
+
+class MainApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.serial = Serial()
+        self.log_display = None
+        self.init_ui()
+
+        # Data for plotting
+        self.data_x = []  # Timestamps
+        self.data_y = []  # Incoming values
+
+        # Plot control variables
+        self.plot_duration = 10    # seconds
+        self.data_rate = 10        # Hz
+        self.plot_paused = False
+
+        # For data rate limiting
+        self.last_plot_time = 0
+
+    def init_ui(self):
+        self.setWindowTitle("Super Party Pants")
+        self.setGeometry(100, 100, 600, 600)
+    
+        layout = QVBoxLayout()
+    
+        # Port selection
+        self.port_label = QLabel("Available Ports:")
+        layout.addWidget(self.port_label)
+    
+        self.port_combo = QComboBox()
+        layout.addWidget(self.port_combo)
+    
+        # Baud rate selection
+        self.baudrate_label = QLabel("Baud Rate:")
+        layout.addWidget(self.baudrate_label)
+    
+        self.baudrate_combo = QComboBox()
+        self.baudrate_combo.addItems(["9600", "19200", "38400", "57600", "115200", "230400"])
+        self.baudrate_combo.setCurrentText("115200")
+        layout.addWidget(self.baudrate_combo)
+    
+        # Connect button
+        self.connect_button = QPushButton("Connect")
+        self.connect_button.setToolTip("Connect to the selected serial port")
+        self.connect_button.clicked.connect(self.connect_serial)
+        layout.addWidget(self.connect_button)
+    
+        # Disconnect button
+        self.disconnect_button = QPushButton("Disconnect")
+        self.disconnect_button.clicked.connect(self.disconnect_serial)
+        self.disconnect_button.setEnabled(False)
+        layout.addWidget(self.disconnect_button)
+    
+        # Status label
+        self.status_label = QLabel("Status: Disconnected")
+        layout.addWidget(self.status_label)
+    
+        # Log display
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        layout.addWidget(self.log_display)
+    
+        # Data Plot
+        self.plot_widget = PlotWidget()
+        self.plot_widget.setBackground("w")
+        self.plot_widget.setTitle("Real-Time Data", color="b", size="12pt")
+        self.plot_widget.setLabel("left", "Force (mN)", color="blue")
+        self.plot_widget.setLabel("bottom", "Time (s)", color="blue")
+        self.plot_widget.showGrid(x=True, y=True)
+        self.data_line = self.plot_widget.plot([], [], pen=mkPen(color="r", width=2), name="Force")
+        layout.addWidget(self.plot_widget)
+
+        # --- Enhanced Plotting Controls ---
+        # Plot Duration Control
+        self.duration_label = QLabel("Plot Duration (s):")
+        layout.addWidget(self.duration_label)
+        self.duration_combo = QComboBox()
+        self.duration_combo.addItems(["5", "10", "30", "60"])
+        self.duration_combo.setCurrentText(str(self.plot_duration))
+        self.duration_combo.currentTextChanged.connect(self.change_plot_duration)
+        layout.addWidget(self.duration_combo)
+
+        # Data Rate Control
+        self.data_rate_label = QLabel("Data Rate (Hz):")
+        layout.addWidget(self.data_rate_label)
+        self.data_rate_slider = QSlider(Qt.Horizontal)
+        self.data_rate_slider.setRange(1, 20)
+        self.data_rate_slider.setValue(self.data_rate)
+        self.data_rate_slider.setToolTip("Adjust data sampling rate")
+        self.data_rate_slider.valueChanged.connect(self.change_data_rate)
+        layout.addWidget(self.data_rate_slider)
+
+        # Pause/Resume Button
+        self.pause_button = QPushButton("Pause Plot")
+        self.pause_button.setCheckable(True)
+        self.pause_button.toggled.connect(self.toggle_pause_plot)
+        layout.addWidget(self.pause_button)
+
+        # Clear Plot Button
+        self.clear_plot_button = QPushButton("Clear Plot")
+        self.clear_plot_button.clicked.connect(self.clear_plot)
+        layout.addWidget(self.clear_plot_button)
+
+        # Export Data Button
+        self.export_button = QPushButton("Export Data")
+        self.export_button.clicked.connect(self.export_data)
+        layout.addWidget(self.export_button)
+        # --- End Plotting Controls ---
+
+        # Send test data
+        self.send_button = QPushButton("Send Test Data")
+        self.send_button.clicked.connect(self.send_test_data)
+        self.send_button.setEnabled(False)
+        # layout.addWidget(self.send_button)
+    
+        self.setLayout(layout)
+        self.refresh_ports()
+
+    # --- Plot Controls Handlers ---
+    def change_plot_duration(self, value):
+        self.plot_duration = int(value)
+        self.log_display.append(f"Plot duration set to {self.plot_duration} seconds.")
+
+    def change_data_rate(self, value):
+        self.data_rate = value
+        self.log_display.append(f"Data rate set to {self.data_rate} Hz.")
+
+    def toggle_pause_plot(self, checked):
+        self.plot_paused = checked
+        self.pause_button.setText("Resume Plot" if checked else "Pause Plot")
+        self.log_display.append("Plot paused." if checked else "Plot resumed.")
+
+    def clear_plot(self):
+        self.data_x.clear()
+        self.data_y.clear()
+        self.data_line.setData([], [])
+        self.log_display.append("Plot cleared.")
+
+    def export_data(self):
+        try:
+            filename = "exported_data.csv"
+            with open(filename, "w", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Time", "Force (mN)"])
+                for x, y in zip(self.data_x, self.data_y):
+                    writer.writerow([x, y])
+            self.log_display.append(f"Data exported to {filename}")
+        except Exception as e:
+            self.log_display.append(f"Export failed: {e}")
+    # --- End Plot Controls ---
+
+    def refresh_ports(self):
+        """
+        Refresh the list of available serial ports.
+        """
+        try:
+            ports = self.serial.get_port_names()
+            self.port_combo.clear()
+            if ports:
+                self.port_combo.addItems(ports)
+                self.log_display.append(f"Found ports: {', '.join(ports)}")
+            else:
+                self.port_combo.addItem("No Ports Found")
+                self.log_display.append("No serial ports found.")
+        except Exception as e:
+            self.log_display.append(f"Error refreshing ports: {e}")
+
+    def connect_serial(self):
+        """
+        Connect to the selected serial port with the chosen baud rate.
+        """
+        try:
+            selected_port = self.port_combo.currentText()
+            selected_baudrate = int(self.baudrate_combo.currentText())
+
+            if "No Ports Found" in selected_port or not selected_port:
+                self.status_label.setText("Status: No Ports Available")
+                self.log_display.append("No available port selected.")
+                return
+
+            self.serial.setup_port(selected_port, selected_baudrate)
+            if self.serial.open_port():
+                self.status_label.setText(f"Status: Connected to {selected_port} at {selected_baudrate} baud")
+                self.log_display.append(f"Connected to {selected_port} at {selected_baudrate} baud")
+                self.serial.rx_signal.connect(self.handle_serial_data)
+                self.send_button.setEnabled(True)
+                self.disconnect_button.setEnabled(True)
+                self.connect_button.setEnabled(False)
+            else:
+                self.status_label.setText("Status: Failed to Connect")
+                self.log_display.append("Failed to open the serial port.")
+        except Exception as e:
+            self.status_label.setText("Status: Error")
+            self.log_display.append(f"Error during connection: {e}")
+
+    def disconnect_serial(self):
+        """
+        Disconnect the serial port and clean up.
+        """
+        try:
+            if self.serial.isOpen():
+                self.serial.close()
+                self.status_label.setText("Status: Disconnected")
+                self.log_display.append("Serial port closed.")
+                self.send_button.setEnabled(False)
+                self.disconnect_button.setEnabled(False)
+                self.connect_button.setEnabled(True)
+        except Exception as e:
+            self.log_display.append(f"Error during disconnection: {e}")
+
+    def handle_serial_data(self, data):
+        """
+        Append incoming serial data to the log, parse the numeric value, and update the plot.
+        Enhanced to respect data rate and plot duration controls, and pause/resume.
+        """
+        try:
+            if self.plot_paused:
+                return  # Don't update plot if paused
+
+            self.log_display.append(f"Received: {data}")
+
+            # Parse the value from the format "422558 V T_mN: -4.63"
+            try:
+                if "T_mN:" in data:
+                    value_str = data.split("T_mN:")[1].strip()
+                    value = float(value_str)
+                    timestamp = time.time()
+
+                    self.data_x.append(timestamp)
+                    self.data_y.append(value)
+
+                    # Remove data older than plot_duration
+                    window_start = timestamp - self.plot_duration
+                    while self.data_x and self.data_x[0] < window_start:
+                        self.data_x.pop(0)
+                        self.data_y.pop(0)
+
+                    # Data rate limiting (Hz)
+                    if self.data_x:
+                        if timestamp - self.last_plot_time < 1.0 / self.data_rate:
+                            return
+                        self.last_plot_time = timestamp
+
+                        t0 = self.data_x[0]
+                        self.data_line.setData([x - t0 for x in self.data_x], self.data_y)
+                        self.plot_widget.setXRange(0, self.plot_duration, padding=0)
+                        self.plot_widget.enableAutoRange(axis='y', enable=True)
+                else:
+                    self.log_display.append("Data format unrecognized. Expected 'T_mN:' field.")
+            except ValueError:
+                self.log_display.append("Failed to parse numeric value.")
+        except Exception as e:
+            self.log_display.append(f"Error handling received data: {e}")
+
+    def send_test_data(self):
+        """
+        Send a test message through the serial port.
+        """
+        try:
+            test_message = "42.0"  # Example numeric test message
+            self.serial.send(test_message)
+            self.log_display.append(f"Sent: {test_message}")
+        except Exception as e:
+            self.log_display.append(f"Error sending data: {e}")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainApp()
+    window.show()
+    sys.exit(app.exec_())
