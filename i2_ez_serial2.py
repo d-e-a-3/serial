@@ -3,7 +3,8 @@ import time
 import csv
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import (
-    QApplication, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QTextEdit, QSpinBox
+    QApplication, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLabel, QComboBox,
+    QTextEdit, QSpinBox
 )
 from pyqtgraph import PlotWidget, mkPen
 from Serial import Serial
@@ -66,7 +67,7 @@ class MainApp(QWidget):
         ]
         for label, _ in self.freq_options:
             self.freq_combo.addItem(label)
-        self.freq_combo.setCurrentIndex(2)  # Default to 2 Hz (500 ms)
+        self.freq_combo.setCurrentIndex(2)  # Default to 50 ms
         self.freq_combo.currentIndexChanged.connect(self.update_timer_interval)
         freq_layout.addWidget(self.freq_combo)
         layout.addLayout(freq_layout)
@@ -187,6 +188,15 @@ class MainApp(QWidget):
                 self.stop_sampling()
         except Exception as e:
             self.log_display.append(f"Error during disconnection: {e}")
+
+    def closeEvent(self, event):
+        # Release serial port on app exit
+        try:
+            if self.serial.isOpen():
+                self.serial.close()
+        except Exception:
+            pass
+        event.accept()
 
     def start_sampling(self):
         duration_sec = self.duration_spin.value()
