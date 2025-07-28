@@ -104,7 +104,7 @@ class MainApp(QWidget):
         self.data_rate_label = QLabel("Data Rate (Hz):")
         layout.addWidget(self.data_rate_label)
         self.data_rate_slider = QSlider(Qt.Horizontal)
-        self.data_rate_slider.setRange(1, 20)
+        self.data_rate_slider.setRange(1, 20000)
         self.data_rate_slider.setValue(10)
         self.data_rate_slider.setToolTip("Adjust data sampling rate")
         self.data_rate_slider.valueChanged.connect(self.change_data_rate)
