@@ -15,12 +15,15 @@ from PyQt5.QtWidgets import (
 from pyqtgraph import PlotWidget, mkPen
 from Serial import Serial
 
-
 class MainApp(QWidget):
     def __init__(self):
         super().__init__()
         self.serial = Serial()
         self.log_display = None
+
+        # --- FIX: Initialize plot_duration before calling init_ui ---
+        self.plot_duration = 10    # seconds
+
         self.init_ui()
 
         # Data for plotting
@@ -28,7 +31,6 @@ class MainApp(QWidget):
         self.data_y = []  # Incoming values
 
         # Plot control variables
-        self.plot_duration = 10    # seconds
         self.data_rate = 10        # Hz
         self.plot_paused = False
 
@@ -103,7 +105,7 @@ class MainApp(QWidget):
         layout.addWidget(self.data_rate_label)
         self.data_rate_slider = QSlider(Qt.Horizontal)
         self.data_rate_slider.setRange(1, 20)
-        self.data_rate_slider.setValue(self.data_rate)
+        self.data_rate_slider.setValue(10)
         self.data_rate_slider.setToolTip("Adjust data sampling rate")
         self.data_rate_slider.valueChanged.connect(self.change_data_rate)
         layout.addWidget(self.data_rate_slider)
